@@ -1,0 +1,652 @@
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: "Segoe UI", Arial, sans-serif;
+  background: #100e1b;
+  color: #fff;
+  min-height: 100vh;
+  overflow: hidden;
+}
+
+button {
+  font-family: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+#app {
+  height: 100vh;
+}
+
+.dashboard {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: #100e1b;
+}
+
+/* CABEÇALHO SUPERIOR */
+
+.topbar {
+  height: 48px;
+  min-height: 48px;
+  padding: 0 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #151224;
+  border-bottom: 1px solid #302744;
+}
+
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.logo-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #8254ed, #5726b8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 19px;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.mode-button {
+  padding: 7px 14px;
+  border: 1px solid #39304e;
+  border-radius: 8px;
+  background: #211b33;
+  color: #bcb3d0;
+  font-size: 13px;
+  font-weight: 600;
+  transition: 0.2s;
+}
+
+.mode-button:hover {
+  background: #302448;
+}
+
+.mode-button.active {
+  background: linear-gradient(135deg, #8051e8, #6234c4);
+  border-color: #8051e8;
+  color: white;
+}
+
+.settings-gear {
+  width: 34px;
+  height: 34px;
+  border: 1px solid #39304e;
+  border-radius: 8px;
+  background: #211b33;
+  color: #c9b8ed;
+  font-size: 21px;
+  transition: 0.2s;
+}
+
+.settings-gear:hover {
+  background: #8051e8;
+  color: white;
+  transform: rotate(30deg);
+}
+
+/* ÁREA DE TRABALHO */
+
+.workspace {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+
+/* PAINEL LATERAL */
+
+.sidebar {
+  flex: 0 0 255px;
+  width: 255px;
+  min-width: 255px;
+  max-width: 255px;
+  background: #151224;
+  border-right: 1px solid #302744;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transition: none !important;
+}
+
+.sidebar-title {
+  height: 65px;
+  min-height: 65px;
+  padding: 0 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border-bottom: 1px solid #302744;
+}
+
+.sidebar-title h2 {
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+.sidebar-title span {
+  background: #302448;
+  color: #c5a9ff;
+  padding: 5px 10px;
+  border-radius: 15px;
+  font-size: 12px;
+}
+
+.sidebar-toggle {
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  border: 1px solid #493b63;
+  border-radius: 7px;
+  background: #302448;
+  color: #c5a9ff;
+  font-size: 13px;
+  transition: none;
+}
+
+.sidebar-toggle:hover {
+  background: #8051e8;
+  color: white;
+}
+
+.account-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+}
+
+.sidebar-account {
+  width: 100%;
+  min-height: 68px;
+  padding: 10px;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  text-align: left;
+  background: #211b32;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  transition: 0.2s;
+  overflow: hidden;
+}
+
+.sidebar-account:hover {
+  background: #302448;
+  border-color: #574079;
+}
+
+.sidebar-account.selected {
+  background: #302448;
+  border-color: #8859e8;
+}
+
+.sidebar-icon {
+  width: 40px;
+  height: 40px;
+  min-width: 40px;
+  background: #40305e;
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 19px;
+}
+
+.sidebar-account-info {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.sidebar-account-info strong {
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-account-info span {
+  font-size: 11px;
+  color: #9991ad;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-empty {
+  padding: 20px 10px;
+  color: #9991ad;
+  font-size: 12px;
+  text-align: center;
+}
+
+.sidebar-footer {
+  padding: 17px;
+  border-top: 1px solid #302744;
+  color: #89819e;
+  font-size: 11px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+/* PAINEL LATERAL PERMANENTEMENTE RECOLHIDO */
+
+.workspace.sidebar-collapsed .sidebar {
+  flex: 0 0 76px !important;
+  width: 76px !important;
+  min-width: 76px !important;
+  max-width: 76px !important;
+}
+
+.workspace.sidebar-collapsed .sidebar-title {
+  display: none !important;
+}
+
+.workspace.sidebar-collapsed .sidebar-title h2,
+.workspace.sidebar-collapsed .sidebar-title span,
+.workspace.sidebar-collapsed .sidebar-account-count,
+.workspace.sidebar-collapsed .sidebar-account-info,
+.workspace.sidebar-collapsed .sidebar-footer {
+  display: none !important;
+}
+
+.workspace.sidebar-collapsed .account-list {
+  padding: 12px 8px;
+}
+
+.workspace.sidebar-collapsed .sidebar-account {
+  justify-content: center;
+  padding: 8px;
+}
+
+.workspace.sidebar-collapsed .sidebar-icon {
+  width: 42px;
+  height: 42px;
+}
+
+.workspace.sidebar-collapsed .sidebar-toggle {
+  width: 34px;
+  height: 34px;
+}
+
+/* ÁREA CENTRAL */
+
+.main-view {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  padding: 0;
+}
+
+/* MODO DESTAQUE */
+
+.focus-container {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+/* TELA DO JOGO */
+
+.game-screen {
+  position: relative;
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
+  background: #0c0b13;
+  border: none;
+  border-radius: 0;
+  overflow: hidden;
+}
+
+/* SEM CONTAS */
+
+.no-account {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 20px;
+}
+
+.no-account-icon {
+  font-size: 60px;
+  margin-bottom: 20px;
+}
+
+.no-account h2 {
+  font-size: 21px;
+  margin-bottom: 10px;
+}
+
+.no-account p {
+  color: #9991ad;
+  font-size: 13px;
+}
+
+/* MULTITELAS */
+
+.multi-container {
+  width: 100%;
+  height: 100%;
+  padding: 12px;
+  overflow: auto;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.multi-grid {
+  display: grid;
+  gap: 12px;
+
+  width: max-content;
+  height: max-content;
+  flex: 0 0 auto;
+
+  align-content: start;
+  justify-content: start;
+  grid-auto-flow: row;
+}
+
+.monitor-card {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+
+  display: block;
+  position: relative;
+
+  background: #0c0b13;
+  border-radius: 8px;
+
+  box-shadow: inset 0 0 0 1px #39304e;
+
+  overflow: hidden;
+  text-align: left;
+}
+
+.monitor-card:hover {
+  box-shadow: inset 0 0 0 1px #8859e8;
+}
+
+.monitor-screen {
+  position: absolute;
+  inset: 0;
+
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+
+  background: #0c0b13;
+  overflow: hidden;
+}
+
+/* INFORMAÇÕES DAS CONTAS */
+
+.monitor-info {
+  width: 100%;
+  min-height: 48px;
+  padding: 7px 12px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+  flex-shrink: 0;
+  text-align: left;
+  background: #211b32;
+  border: none;
+}
+
+.monitor-info:hover {
+  background: #302448;
+}
+
+.monitor-info strong {
+  font-size: 13px;
+}
+
+.monitor-info span {
+  font-size: 11px;
+  color: #9991ad;
+}
+
+/* CONFIGURAÇÕES */
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  z-index: 1000;
+}
+
+.settings-modal {
+  width: 100%;
+  max-width: 520px;
+  max-height: 85vh;
+  overflow-y: auto;
+  background: #1c172b;
+  border: 1px solid #493b63;
+  border-radius: 15px;
+  box-shadow: 0 20px 70px rgba(0, 0, 0, 0.5);
+}
+
+.modal-header {
+  padding: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid #39304e;
+}
+
+.modal-header h2 {
+  font-size: 18px;
+}
+
+.modal-close {
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 7px;
+  background: #302448;
+  color: white;
+  font-size: 22px;
+}
+
+.modal-close:hover {
+  background: #e53945;
+}
+
+.settings-content {
+  padding: 20px;
+}
+
+.settings-section {
+  margin-bottom: 25px;
+}
+
+.settings-section h3 {
+  font-size: 14px;
+  margin-bottom: 15px;
+  color: #c5a9ff;
+}
+
+.settings-option {
+  width: 100%;
+  padding: 13px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #302448;
+  border: 1px solid #574079;
+  border-radius: 8px;
+  color: white;
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+
+.settings-option:hover {
+  background: #49356e;
+}
+
+.settings-option span {
+  font-size: 20px;
+}
+
+.manage-account {
+  padding: 13px 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border-bottom: 1px solid #39304e;
+}
+
+.manage-account > div:first-child {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.manage-account strong {
+  font-size: 13px;
+}
+
+.manage-account span {
+  font-size: 11px;
+  color: #9991ad;
+}
+
+.manage-actions {
+  display: flex;
+  gap: 7px;
+}
+
+.manage-actions button,
+.limit-control button {
+  padding: 7px 11px;
+  background: #49356e;
+  border: none;
+  border-radius: 6px;
+  font-size: 11px;
+}
+
+.manage-actions button:hover,
+.limit-control button:hover {
+  background: #8051e8;
+}
+
+.manage-actions .delete-option {
+  background: #49252d;
+  color: #ff9ca4;
+}
+
+.manage-actions .delete-option:hover {
+  background: #b52c3b;
+  color: white;
+}
+
+/* LIMITE DE CONTAS */
+
+.limit-control {
+  display: flex;
+  gap: 10px;
+}
+
+.limit-control input {
+  width: 100px;
+  padding: 10px;
+  background: #100e1b;
+  border: 1px solid #493b63;
+  border-radius: 7px;
+  color: white;
+  outline: none;
+}
+
+.limit-control input:focus {
+  border-color: #8859e8;
+}
+
+.limit-control button {
+  padding: 10px 18px;
+  color: white;
+  font-weight: 600;
+}
+
+/* ROLAGEM */
+
+::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+
+::-webkit-scrollbar-track {
+  background: #151224;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #49356e;
+  border-radius: 10px;
+}
+
+/* RESPONSIVIDADE */
+
+@media (max-width: 750px) {
+  .topbar {
+    padding: 0 12px;
+  }
+
+  .header-actions {
+    gap: 5px;
+  }
+
+  .mode-button {
+    padding: 8px;
+    font-size: 11px;
+  }
+}
+
+@media (max-width: 500px) {
+  .logo span {
+    display: none;
+  }
+}
