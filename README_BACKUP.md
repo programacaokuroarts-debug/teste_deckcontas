@@ -87,6 +87,44 @@ window.__deckContasForceCatch()
 window.__deckContasClearAttempts()
 ```
 
+### Funções de limpeza de logs (para evitar travamentos)
+
+```javascript
+// Limpar logs antigos manualmente
+window.__deckContasClearLogs()
+
+// Limpar logs de mais de 1 hora atrás
+window.__deckContasPurgeOldLogs()
+
+// Forçar limpeza de logs pendentes
+window.__deckContasCleanupLogs()
+
+// Exportar apenas os últimos 50 logs (evita arquivos gigantes)
+window.__deckContasExportLogs()
+```
+
+## Otimizações de Desempenho
+
+### Redução de logs para prevenir travamentos
+
+Para evitar que o arquivo de dados cresça demais e cause travamentos:
+
+1. **Logs limitados a 100 registros** (em vez de 300)
+2. **Logs pendentes limitados a 50** (em vez de 100)
+3. **Limpeza automática a cada 1 minuto**
+4. **Exportação limitada a 50 logs**
+
+### Diagnóstico de arquivos grandes
+
+Se o computador travar:
+
+1. Abra o console do jogo (F12)
+2. Execute:
+   ```javascript
+   window.__deckContasGetLogs().length  // Verifica quantos logs existem
+   window.__deckContasClearLogs()        // Limpa imediatamente
+   ```
+
 ## Fluxo Recomendado
 
 1. Faça suas alterações no código
