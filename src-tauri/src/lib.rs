@@ -561,6 +561,18 @@ const BALL_DIAGNOSTICS_SCRIPT: &str = r##"
             quantidade: botao.querySelector(".q")?.textContent || ""
         }));
 
+        // Novo diagnóstico: estado interno da automação
+        const automacaoInterna = {
+            caidosInterno: window.__deckContasFallenPokemon ? Array.from(window.__deckContasFallenPokemon.entries()).map(([slot, p]) => ({
+                slot: p.slot,
+                nome: p.nome,
+                expiraEm: new Date(p.expiraEm).toISOString()
+            })) : [],
+            tentativas: window.__deckContasBallAttempts ? Array.from(window.__deckContasBallAttempts.entries()) : [],
+            config: window.__deckContasBallConfig || null,
+            ballBusy: window.__deckContasBallBusy || false
+        };
+
         return {
             endereco: location.href,
             estado: document.readyState,
@@ -568,7 +580,8 @@ const BALL_DIAGNOSTICS_SCRIPT: &str = r##"
             automacao: window.__deckContasBallConfig || null,
             caidos,
             bolasCaidos,
-            bolasEstoque
+            bolasEstoque,
+            automacaoInterna
         };
     };
 
@@ -765,6 +778,19 @@ const BALL_AUTOMATION_SCRIPT: &str = r##"
                 elemento => identificarBola(elemento) === id
             );
 
+            // Apenas retornar a bola se não estiver em uso (classe "on" significa selecionada)
+            if (botao && !botao.classList.contains("on")) {
+                return { id, botao };
+            }
+        }
+
+        // Se todos estão sendo usados, retornar null
+        // Mas verificar se algum botão pode ser clicado novamente
+        for (const id of prioridade) {
+            const botao = botoes.find(
+                elemento => identificarBola(elemento) === id
+            );
+
             if (botao) {
                 return { id, botao };
             }
@@ -858,29 +884,40 @@ const BALL_AUTOMATION_SCRIPT: &str = r##"
 
         if (caidos.size === 0) return;
 
-        const bola = selecionarMelhorBola();
-        if (!bola) return;
-
-        const pokemon = Array.from(caidos.values())
+        // Encontrar o pokemon mais urgente (menor tempo restante) que permita lançar
+        const pokemonUrgente = Array.from(caidos.values())
             .sort((a, b) => a.expiraEm - b.expiraEm)
             .find(p => !tentativas.has(String(p.slot)));
 
-        if (!pokemon) return;
+        if (!pokemonUrgente) return;
 
-        const slot = String(pokemon.slot);
+        // Verificar se ainda podemos tentar (não passou mais de 28 segundos)
+        const slot = String(pokemonUrgente.slot);
+        const ultimaTentativa = tentativas.get(slot);
+        if (ultimaTentativa && (agora - ultimaTentativa < 28000)) {
+            return;
+        }
 
         window.__deckContasBallBusy = true;
 
         try {
+            const bola = selecionarMelhorBola();
+            if (!bola) {
+                // Se não temos bola disponível agora, marcar que tentamos recentemente
+                // para não ficarmos tentando o mesmo pokemon eternamente
+                tentativas.set(slot, agora);
+                return;
+            }
+
             // Seleciona a bola pelo mecanismo real do jogo.
             // O lançamento continua sendo enviado pelo WebSocket.
             if (!bola.botao.classList.contains("on")) {
                 bola.botao.click();
             }
 
-            tentativas.set(slot, Date.now());
+            tentativas.set(slot, agora);
 
-            const enviado = lancarBola(pokemon, bola);
+            const enviado = lancarBola(pokemonUrgente, bola);
 
             if (!enviado) {
                 tentativas.delete(slot);
@@ -899,7 +936,9 @@ const BALL_AUTOMATION_SCRIPT: &str = r##"
         const agora = Date.now();
 
         for (const [slot, horario] of tentativas.entries()) {
-            if (agora - horario > 35000) {
+            // Limpar tentativas mais anturas de 25 segundos
+            // para permitir nova tentativa se bola ficou disponível
+            if (agora - horario > 25000) {
                 tentativas.delete(slot);
             }
         }
@@ -907,8 +946,27 @@ const BALL_AUTOMATION_SCRIPT: &str = r##"
 
     window.__deckContasBallTimer = setInterval(() => {
         limparTentativas();
+        
+        const agora = Date.now();
+        
+        // Verificar se algum Pokémon está prestes a expirar (menos de 5 segundos)
+        for (const [slot, pokemon] of caidos.entries()) {
+            const restante = pokemon.expiraEm - agora;
+            if (restante > 0 && restante < 5000) {
+                // Log para diagnóstico quando um Pokémon está crítico
+                window.__deckContasLog?.(
+                    "AUTOMACAO_POKEMON_CRITICO",
+                    {
+                        slot: pokemon.slot,
+                        nome: pokemon.nome,
+                        restanteMs: restante
+                    }
+                );
+            }
+        }
+        
         procurarCaidos();
-    }, 500);
+    }, 300);
 
     window.__deckContasLog?.(
         "AUTOMACAO_INSTALADA",
@@ -917,6 +975,64 @@ const BALL_AUTOMATION_SCRIPT: &str = r##"
             caidosRecebidos: caidos.size
         }
     );
+
+    // Função de força para testar/verificar
+    window.__deckContasForceCatch = function(slot) {
+        const config = window.__deckContasBallConfig;
+        if (!config || !config.enabled) {
+            window.__deckContasLog?.("ERRO", { motivo: "Automação desativada" });
+            return false;
+        }
+        
+        const agora = Date.now();
+        const allCaidos = Array.from(caidos.entries());
+        
+        // Se slot especificado, usar aquele
+        // Se não, usar o mais urgente
+        let pokemonUrgente;
+        if (slot != null) {
+            pokemonUrgente = caidos.get(String(slot));
+        } else {
+            pokemonUrgente = allCaidos
+                .sort((a, b) => a[1].expiraEm - b[1].expiraEm)
+                .find(([s, p]) => !tentativas.has(s) || (agora - tentativas.get(s)) > 28000)?.[1];
+        }
+        
+        if (!pokemonUrgente) {
+            window.__deckContasLog?.("ERRO", { motivo: "Pokemon nao encontrado" });
+            return false;
+        }
+        
+        const s = String(pokemonUrgente.slot);
+        const bola = selecionarMelhorBola();
+        
+        if (!bola) {
+            window.__deckContasLog?.("ERRO", { motivo: "Nenhuma bola disponivel" });
+            return false;
+        }
+        
+        if (!bola.botao.classList.contains("on")) {
+            bola.botao.click();
+        }
+        
+        tentativas.set(pokemonUrgente.slot, agora);
+        const enviado = lancarBola(pokemonUrgente, bola);
+        
+        window.__deckContasLog?.("FORCE_CAUGHT", {
+            slot: pokemonUrgente.slot,
+            nome: pokemonUrgente.nome,
+            bola: bola.id,
+            enviado: enviado
+        });
+        
+        return enviado;
+    };
+
+    // Função para limpar tentativas (útil para testes)
+    window.__deckContasClearAttempts = function() {
+        tentativas.clear();
+        window.__deckContasLog?.("TENTATIVAS_LIMCAS", { });
+    };
 
 })();
 "##;
