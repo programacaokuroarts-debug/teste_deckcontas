@@ -47,7 +47,8 @@ const BALL_WEBSOCKET_INIT_SCRIPT: &str = r##"
 
         destino.push(registro);
 
-        const limite = Array.isArray(logs) ? 300 : 80;
+        // Limitar a 100 logs para evitar arquivos gigantes
+        const limite = Array.isArray(logs) ? 100 : 50;
 
         while (destino.length > limite) {
             destino.shift();
@@ -124,12 +125,23 @@ const BALL_WEBSOCKET_INIT_SCRIPT: &str = r##"
                 const pendentes = window.__deckContasPendingGameMessages;
                 pendentes.push(mensagem);
 
-                if (pendentes.length > 100) {
+                // Reduzir limite para evitar arquivos gigantes
+                if (pendentes.length > 50) {
                     pendentes.shift();
                 }
             }
         } catch {}
     }
+
+    // Limpar logs pendentes antigos periodicamente
+    window.__deckContasCleanupLogs = function() {
+        if (window.__deckContasPendingWsLogs) {
+            window.__deckContasPendingWsLogs = window.__deckContasPendingWsLogs.slice(-30);
+        }
+        if (window.__deckContasPendingGameMessages) {
+            window.__deckContasPendingGameMessages = window.__deckContasPendingGameMessages.slice(-30);
+        }
+    };
 
     window.WebSocket = new Proxy(NativeWebSocket, {
         construct(target, args) {
@@ -499,7 +511,8 @@ const BALL_DIAGNOSTICS_SCRIPT: &str = r##"
     function adicionarLog(registro) {
         window.__deckContasLogs.push(registro);
 
-        while (window.__deckContasLogs.length > 300) {
+        // Limitar a 100 logs para evitar arquivos gigantes
+        while (window.__deckContasLogs.length > 100) {
             window.__deckContasLogs.shift();
         }
     }
@@ -525,8 +538,36 @@ const BALL_DIAGNOSTICS_SCRIPT: &str = r##"
     };
 
     window.__deckContasExportLogs = function() {
-        return JSON.stringify(window.__deckContasLogs, null, 2);
+        // Retornar apenas os últimos 50 logs para evitar arquivos gigantes
+        const logs = window.__deckContasLogs || [];
+        const ultimosLogs = logs.slice(-50);
+        return JSON.stringify({
+            total: logs.length,
+            exibidos: ultimosLogs,
+            exportadoEm: new Date().toISOString()
+        }, null, 2);
     };
+
+    // Função para limpar logs manualmente
+    window.__deckContasPurgeOldLogs = function() {
+        if (!window.__deckContasLogs) return;
+        
+        const agora = Date.now();
+        const UM_HORA = 60 * 60 * 1000;
+        
+        window.__deckContasLogs = window.__deckContasLogs.filter(registro => {
+            // Manter logs de até 1 hora atrás
+            return agora - registro.timestamp < UM_HORA;
+        });
+    };
+
+    // Timer de limpeza automática dos logs a cada minuto
+    if (!window.__deckContasCleanupTimer) {
+        window.__deckContasCleanupTimer = setInterval(() => {
+            window.__deckContasCleanupLogs();
+            window.__deckContasPurgeOldLogs();
+        }, 60000);
+    }
 
     const mensagensPendentes = window.__deckContasPendingWsLogs || [];
 
