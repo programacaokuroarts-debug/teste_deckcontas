@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-is-account-open"
+description = "Enables the is_account_open command without any pre-configured scope."
+commands.allow = ["is_account_open"]
+
+[[permission]]
+identifier = "deny-is-account-open"
+description = "Denies the is_account_open command without any pre-configured scope."
+commands.deny = ["is_account_open"]

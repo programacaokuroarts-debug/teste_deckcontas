@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-resume-game-webview"
+description = "Enables the resume_game_webview command without any pre-configured scope."
+commands.allow = ["resume_game_webview"]
+
+[[permission]]
+identifier = "deny-resume-game-webview"
+description = "Denies the resume_game_webview command without any pre-configured scope."
+commands.deny = ["resume_game_webview"]

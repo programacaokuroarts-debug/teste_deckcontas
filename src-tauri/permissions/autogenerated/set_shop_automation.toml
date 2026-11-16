@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-set-shop-automation"
+description = "Enables the set_shop_automation command without any pre-configured scope."
+commands.allow = ["set_shop_automation"]
+
+[[permission]]
+identifier = "deny-set-shop-automation"
+description = "Denies the set_shop_automation command without any pre-configured scope."
+commands.deny = ["set_shop_automation"]

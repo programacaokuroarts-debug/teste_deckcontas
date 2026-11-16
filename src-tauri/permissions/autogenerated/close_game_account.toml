@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-close-game-account"
+description = "Enables the close_game_account command without any pre-configured scope."
+commands.allow = ["close_game_account"]
+
+[[permission]]
+identifier = "deny-close-game-account"
+description = "Denies the close_game_account command without any pre-configured scope."
+commands.deny = ["close_game_account"]

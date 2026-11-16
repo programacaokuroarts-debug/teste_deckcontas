@@ -5,6 +5,23 @@
   "windows": ["main"],
   "permissions": [
     "core:default",
-    "opener:default"
+    "opener:default",
+    "allow-greet",
+    "allow-open-game-account",
+    "allow-is-account-open",
+    "allow-close-game-account",
+    "allow-create-game-webview",
+    "allow-update-game-webview-bounds",
+    "allow-hide-game-webview",
+    "allow-is-game-webview-open",
+    "allow-close-game-webview",
+    "allow-pause-game-webview",
+    "allow-resume-game-webview",
+    "allow-test-game-webview-js",
+    "allow-set-ball-automation",
+    "allow-set-shop-automation",
+    "allow-set-solo-mode",
+    "allow-toggle-solo-panel",
+    "allow-aplicar-opcoes-solo"
   ]
 }

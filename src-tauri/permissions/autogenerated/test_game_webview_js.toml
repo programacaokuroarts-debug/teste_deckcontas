@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-test-game-webview-js"
+description = "Enables the test_game_webview_js command without any pre-configured scope."
+commands.allow = ["test_game_webview_js"]
+
+[[permission]]
+identifier = "deny-test-game-webview-js"
+description = "Denies the test_game_webview_js command without any pre-configured scope."
+commands.deny = ["test_game_webview_js"]

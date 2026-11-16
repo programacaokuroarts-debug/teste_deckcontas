@@ -39,6 +39,56 @@ const BALL_WEBSOCKET_INIT_SCRIPT: &str = r##"
     window.__deckContasPendingGameMessages = [];
     window.__deckContasGameSocket = null;
 
+    // Remonta o estado completo a partir dos deltas (mesma regra de
+    // shared/estado-delta.mjs do jogo). O Modo Solo lê o resultado
+    // em window.__deckContasEstado e a lista de hunts em
+    // window.__deckContasWelcome.
+    window.__deckContasMesclarEstado = (function () {
+        let campos = null;
+        let pokemons = new Map();
+
+        return function mesclar(parcial) {
+            if (!parcial) return;
+
+            const {
+                cheio,
+                pokemons: lista,
+                pkMud,
+                pkFora,
+                dexMud,
+                dexFora,
+                ...resto
+            } = parcial;
+
+            if (cheio || !campos) {
+                campos = resto;
+                pokemons = new Map((lista ?? []).map(k => [k.id, k]));
+            } else {
+                Object.assign(campos, resto);
+
+                if (lista) pokemons = new Map(lista.map(k => [k.id, k]));
+                for (const k of pkMud ?? []) pokemons.set(k.id, k);
+                for (const id of pkFora ?? []) pokemons.delete(id);
+
+                if (dexMud || dexFora) {
+                    campos.pokedex = { ...(campos.pokedex ?? {}), ...(dexMud ?? {}) };
+                    for (const chave of dexFora ?? []) delete campos.pokedex[chave];
+                }
+            }
+
+            window.__deckContasEstado = { ...campos, pokemons: [...pokemons.values()] };
+
+            // Relógio do servidor: o campo "servidorAgora" vem nos deltas
+            // e permite ao Modo Solo saber quando a troca de hunt está livre.
+            if (parcial.servidorAgora) {
+                window.__deckContasClock = {
+                    ts: Number(parcial.servidorAgora) || 0,
+                    em: Date.now()
+                };
+            }
+        };
+    })();
+
     function guardarLog(registro) {
         const logs = window.__deckContasLogs;
         const destino = Array.isArray(logs)
@@ -105,6 +155,48 @@ const BALL_WEBSOCKET_INIT_SCRIPT: &str = r##"
 
         try {
             const mensagem = JSON.parse(data);
+
+            // Estado do jogo (Modo Solo): o welcome traz o quadro
+            // completo e os pacotes "estado" trazem só o que mudou.
+            if (mensagem.t === "welcome") {
+                window.__deckContasWelcome = mensagem;
+                if (mensagem.estado) {
+                    window.__deckContasMesclarEstado({ ...mensagem.estado, cheio: true });
+                }
+                return;
+            }
+
+            if (mensagem.t === "estado") {
+                if (mensagem.estado) {
+                    window.__deckContasMesclarEstado(mensagem.estado);
+                }
+                return;
+            }
+
+            // Cooldown de troca de hunt: o servidor manda "trocaLivreEm"
+            // no evento "hunt" (dentro de mensagens de batalha). O Modo
+            // Solo só envia hunt.select depois que a troca está livre.
+            if (mensagem.t === "batalha" && Array.isArray(mensagem.ev)) {
+                for (const ev of mensagem.ev) {
+                    if (ev && ev.k === "hunt" && ev.trocaLivreEm) {
+                        window.__deckContasTrocaLivreEm = Number(ev.trocaLivreEm) || 0;
+                    }
+                }
+            }
+
+            // Recusa do servidor logo depois de um hunt.select nosso:
+            // guardada para o painel mostrar o motivo e tentar de novo.
+            if (mensagem.t === "erro") {
+                const enviada = Number(window.__deckContasHuntSelectEm || 0);
+                if (enviada && Date.now() - enviada < 8000) {
+                    window.__deckContasHuntErro = {
+                        chave: mensagem.chave || null,
+                        msg: mensagem.msg || null,
+                        params: mensagem.params || null,
+                        em: Date.now()
+                    };
+                }
+            }
 
             const relevante =
                 mensagem.t === "campo" ||
@@ -626,16 +718,21 @@ const BALL_DIAGNOSTICS_SCRIPT: &str = r##"
         };
     };
 
-    window.__deckContasLog(
-        "DIAGNOSTICO_INICIADO",
-        {
-            endereco: location.href,
-            titulo: document.title,
-            estado: document.readyState,
-            observadorWebSocket:
-                window.__deckContasWsObserverInstalled === true
-        }
-    );
+    // Só loga a primeira instalação por página: o app reenvia a
+    // configuração periodicamente para recuperar um F5.
+    if (!window.__deckContasDiagnosticsLogged) {
+        window.__deckContasDiagnosticsLogged = true;
+        window.__deckContasLog(
+            "DIAGNOSTICO_INICIADO",
+            {
+                endereco: location.href,
+                titulo: document.title,
+                estado: document.readyState,
+                observadorWebSocket:
+                    window.__deckContasWsObserverInstalled === true
+            }
+        );
+    }
 
 })();
 "##;
@@ -677,20 +774,43 @@ const BALL_AUTOMATION_SCRIPT: &str = r##"
 
         if (mensagem.t === "campo.init") {
             caidos.clear();
+            if (window.__deckContasMobInfo) {
+                window.__deckContasMobInfo.clear();
+            }
         }
+
+        if (!window.__deckContasMobInfo) {
+            window.__deckContasMobInfo = new Map();
+        }
+
+        const mobsInfo = window.__deckContasMobInfo;
 
         for (const mob of mensagem.mobs || []) {
             if (mob.s == null) continue;
 
             const slot = String(mob.s);
 
+            // Guarda nível/shiny de QUALQUER atualização do mob
+            // (inclusive quando está vivo), para usar quando morrer:
+            // a mensagem de morte nem sempre traz esses campos.
+            if (mob.nv != null || mob.sh != null || mob.n) {
+                const info = mobsInfo.get(slot) || {};
+                if (Number(mob.nv) > 0) info.nivel = Number(mob.nv);
+                if (mob.sh != null) info.shiny = !!mob.sh;
+                if (mob.n) info.nome = mob.n;
+                mobsInfo.set(slot, info);
+            }
+
             if (Number(mob.x) === 1) {
                 const restante = Number(mob.xr);
+                const info = mobsInfo.get(slot) || {};
 
                 if (restante > 0) {
                     caidos.set(slot, {
                         slot: Number(mob.s),
-                        nome: mob.n || "",
+                        nome: mob.n || info.nome || "",
+                        nivel: Number(mob.nv) || info.nivel || 0,
+                        shiny: !!(mob.sh ?? info.shiny),
                         expiraEm: Date.now() + restante
                     });
                 }
@@ -704,6 +824,7 @@ const BALL_AUTOMATION_SCRIPT: &str = r##"
             const slot = String(slotBruto);
             caidos.delete(slot);
             tentativas.delete(slot);
+            mobsInfo.delete(slot);
         }
     }
 
@@ -720,11 +841,13 @@ const BALL_AUTOMATION_SCRIPT: &str = r##"
                 evento.slot != null
             ) {
                 const slot = String(evento.slot);
+                const info = window.__deckContasMobInfo?.get(slot) || {};
 
                 const pokemon = {
                     slot: Number(evento.slot),
-                    nome: evento.nome || "",
-                    nivel: evento.level || 0, // Tentar pegar o nivel da mensagem
+                    nome: evento.nome || info.nome || "",
+                    nivel: Number(evento.level || evento.pokemon?.level || info.nivel) || 0,
+                    shiny: !!(evento.shiny ?? evento.pokemon?.shiny ?? info.shiny),
                     expiraEm: Date.now() + 30000
                 };
 
@@ -812,7 +935,9 @@ const BALL_AUTOMATION_SCRIPT: &str = r##"
         const el = document.querySelector(`#caidos-lista .caido[data-slot="${pokemon.slot}"]`);
         if (!el) return 0;
         
-        const txt = el.innerText || el.textContent || "";
+        // O jogo escreve o nível em <b>Nv123</b> dentro de .caido-quem
+        const forte = el.querySelector(".caido-quem b");
+        const txt = (forte && forte.textContent) || el.innerText || el.textContent || "";
         const m = txt.match(/L[vV]?\.?\s*(\d+)/) || txt.match(/(\d+)/);
         return m ? parseInt(m[1], 10) : 0;
     }
@@ -825,6 +950,17 @@ const BALL_AUTOMATION_SCRIPT: &str = r##"
         );
 
         if (botoes.length === 0) return null;
+
+        // Shiny morto: com a opção ligada, usa as melhores bolas
+        // disponíveis (Beast > Ultra > Super > Great > Poke) para
+        // maximizar a chance de captura do shiny.
+        if (pokemon?.shiny && config?.shinyBestBall) {
+            for (const id of [5, 4, 3, 2, 1]) {
+                const btn = botoes.find(e => identificarBola(e) === id);
+                if (btn) return { id, botao: btn };
+            }
+            return null;
+        }
 
         // Se estiver configurado para FORÇAR ULTRA BALL
         if (config?.forceUltraBall) {
@@ -1035,13 +1171,17 @@ const BALL_AUTOMATION_SCRIPT: &str = r##"
         procurarCaidos();
     }, 300);
 
-    window.__deckContasLog?.(
-        "AUTOMACAO_INSTALADA",
-        {
-            websocketDisponivel: !!obterSocket(),
-            caidosRecebidos: caidos.size
-        }
-    );
+    // Uma única vez por página (o resync periódico reexecuta isto).
+    if (!window.__deckContasAutomationLogged) {
+        window.__deckContasAutomationLogged = true;
+        window.__deckContasLog?.(
+            "AUTOMACAO_INSTALADA",
+            {
+                websocketDisponivel: !!obterSocket(),
+                caidosRecebidos: caidos.size
+            }
+        );
+    }
 
     // Função de força para testar/verificar
     window.__deckContasForceCatch = function(slot) {
@@ -1102,6 +1242,48 @@ const BALL_AUTOMATION_SCRIPT: &str = r##"
 "##;
 
 /* =====================================================
+   DESLIGAR A AUTOMAÇÃO DE BOLA PRÓPRIA DO JOGO
+
+   Se o VIP automático do jogo estiver ligado, ele lança a
+   bola dele em paralelo com a nossa e o resultado são dois
+   tipos de bola no mesmo corpo. Manda o mesmo patch que a
+   UI do jogo manda (auto.set espelhando o estado atual),
+   só que desligando as três chaves de auto-ball.
+===================================================== */
+
+const DESLIGAR_AUTO_BOLA_DO_JOGO: &str = r##"
+(() => {
+    if (!window.__deckContasBallConfig?.enabled) return;
+    if (window.__deckContasGameAutoBallOff) return;
+
+    try {
+        const automation = window.__deckContasEstado?.automation;
+        const socket = window.__deckContasGameSocket;
+
+        if (!automation || !socket || socket.readyState !== 1) return;
+
+        const ativo = !!(
+            automation.autoBallSemParar ||
+            automation.autoBallAteCapturar ||
+            automation.autoBall
+        );
+
+        if (!ativo) return;
+
+        socket.send(JSON.stringify({
+            t: "auto.set",
+            ...automation,
+            autoBall: false,
+            autoBallSemParar: false,
+            autoBallAteCapturar: false
+        }));
+
+        window.__deckContasGameAutoBallOff = true;
+    } catch {}
+})();
+"##;
+
+/* =====================================================
    CONFIGURAR AUTOMAÇÃO DE POKÉBOLAS
 ===================================================== */
 
@@ -1112,6 +1294,7 @@ fn set_ball_automation(
     enabled: bool,
     use_beast_ball: bool,
     force_ultra_ball: bool,
+    shiny_best_ball: bool,
 ) -> Result<(), String> {
     let label = format!("game-view-{}", account_id);
 
@@ -1122,18 +1305,174 @@ fn set_ball_automation(
     let config = serde_json::json!({
         "enabled": enabled,
         "useBeastBall": use_beast_ball,
-        "forceUltraBall": force_ultra_ball
+        "forceUltraBall": force_ultra_ball,
+        "shinyBestBall": shiny_best_ball
     });
 
     let script = format!(
-        "window.__deckContasBallConfig = {};\n{}\n{}\n",
+        "window.__deckContasBallConfig = {};\n{}\n{}\n{}\n",
         config,
         BALL_DIAGNOSTICS_SCRIPT,
-        BALL_AUTOMATION_SCRIPT
+        BALL_AUTOMATION_SCRIPT,
+        DESLIGAR_AUTO_BOLA_DO_JOGO
     );
 
     view.eval(&script)
         .map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+/* =====================================================
+   MODO SOLO - MELHOR HUNT POR CONTA
+
+   Usa o motor da extensão "_hunt for PokeIdle" (boot.js +
+   jogo-bundle.js + game.js + engine.js + ritmo.js + solo.js),
+   embutido no binário via include_str! e injetado na janela
+   do jogo com view.eval. O eval não é bloqueado pelo CSP da
+   página (script-src com nonce + strict-dynamic), diferente
+   de import() dinâmico.
+===================================================== */
+
+const SOLO_BOOT_SCRIPT: &str = include_str!("solo/boot.js");
+const SOLO_BUNDLE_SCRIPT: &str = include_str!("solo/jogo-bundle.js");
+const SOLO_GAME_SCRIPT: &str = include_str!("solo/game.js");
+const SOLO_ENGINE_SCRIPT: &str = include_str!("solo/engine.js");
+const SOLO_RITMO_SCRIPT: &str = include_str!("solo/ritmo.js");
+const SOLO_CONTROLLER_SCRIPT: &str = include_str!("solo/solo.js");
+
+fn envolver_solo(nome: &str, fonte: &str) -> String {
+    format!(
+        "try {{\n{}\n}} catch (e) {{ console.error('[Deck Contas] solo {}:', e); }}\n",
+        fonte, nome
+    )
+}
+
+// Injeta o motor do Modo Solo uma única vez por página.
+// Cada script é idempotente (o solo.js marca
+// __deckContasSoloInstalado), então repetir é seguro.
+fn injetar_motor_solo(view: &tauri::Webview) -> Result<(), String> {
+    let mut script = String::with_capacity(1_100_000);
+
+    script.push_str("if (!globalThis.__deckContasSoloInstalado) {\n");
+    script.push_str(&envolver_solo("boot", SOLO_BOOT_SCRIPT));
+    script.push_str(&envolver_solo("bundle", SOLO_BUNDLE_SCRIPT));
+    script.push_str(&envolver_solo("game", SOLO_GAME_SCRIPT));
+    script.push_str(&envolver_solo("engine", SOLO_ENGINE_SCRIPT));
+    script.push_str(&envolver_solo("ritmo", SOLO_RITMO_SCRIPT));
+    script.push_str(&envolver_solo("controller", SOLO_CONTROLLER_SCRIPT));
+    script.push_str("}\n");
+
+    view.eval(&script).map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command]
+fn set_solo_mode(
+    app: tauri::AppHandle,
+    account_id: u64,
+    enabled: bool,
+    ordem: String,
+    shiny_best_ball: bool,
+) -> Result<(), String> {
+    let label = format!("game-view-{}", account_id);
+
+    let view = app
+        .get_webview(&label)
+        .ok_or("Navegador da conta não encontrado.")?;
+
+    let foco = match ordem.as_str() {
+        "ouro" | "shiny" => ordem.clone(),
+        _ => "xp".to_string(),
+    };
+
+    let config = serde_json::json!({
+        "enabled": enabled,
+        "ordem": foco,
+        "shinyBestBall": shiny_best_ball
+    });
+
+    if enabled {
+        injetar_motor_solo(&view)?;
+    }
+
+    let script = format!(
+        "try {{\n globalThis.__deckContasSolo?.configurar({});\n}} catch (e) {{ console.error('[Deck Contas] solo config:', e); }}",
+        config
+    );
+
+    view.eval(&script).map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command]
+fn toggle_solo_panel(
+    app: tauri::AppHandle,
+    account_id: u64,
+) -> Result<(), String> {
+    let label = format!("game-view-{}", account_id);
+
+    let view = app
+        .get_webview(&label)
+        .ok_or("Navegador da conta não encontrado.")?;
+
+    // Se o motor ainda não foi injetado (Modo Solo desligado,
+    // mas o usuário quer ver o painel), injeta agora.
+    injetar_motor_solo(&view)?;
+
+    let script = "try {\n globalThis.__deckContasSolo?.alternarPainel();\n} catch (e) { console.error('[Deck Contas] solo painel:', e); }";
+
+    view.eval(script).map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+/* =====================================================
+   OPÇÕES ALTERADAS DENTRO DO PAINEL DO JOGO
+
+   O popup do Modo Solo vive na janela da conta e altera foco e
+   opções de bola por ali. O app principal é quem conhece a conta,
+   então o comando lê a conta pelo label da webview ("game-view-{id}")
+   e repassa para a janela principal salvar e reenviar a config.
+===================================================== */
+
+#[tauri::command]
+fn aplicar_opcoes_solo(
+    webview: tauri::Webview,
+    ordem: Option<String>,
+    force_ultra_ball: Option<bool>,
+    shiny_best_ball: Option<bool>,
+) -> Result<(), String> {
+    let label = webview.label().to_string();
+
+    let account_id: u64 = label
+        .strip_prefix("game-view-")
+        .ok_or("Este ajuste só funciona na janela de uma conta.")?
+        .parse()
+        .map_err(|_| "Identificador de conta inválido.".to_string())?;
+
+    let main = webview
+        .get_webview("main")
+        .ok_or("Janela principal não encontrada.")?;
+
+    let ordem_json = match ordem.as_deref() {
+        Some("xp") | Some("ouro") | Some("shiny") => {
+            serde_json::Value::String(ordem.clone().unwrap_or_default())
+        }
+        _ => serde_json::Value::Null,
+    };
+
+    let script = format!(
+        "try {{\n window.__deckContasAplicarOpcoesSolo?.({}, {{ ordem: {}, forceUltraBall: {}, shinyBestBall: {} }});\n}} catch (e) {{ console.error('[Deck Contas] aplicar opções:', e); }}",
+        account_id,
+        ordem_json,
+        force_ultra_ball.map(|b| b.to_string()).unwrap_or_else(|| "null".into()),
+        shiny_best_ball.map(|b| b.to_string()).unwrap_or_else(|| "null".into()),
+    );
+
+    main.eval(&script).map_err(|e| e.to_string())?;
 
     Ok(())
 }
@@ -1626,7 +1965,10 @@ pub fn run() {
             resume_game_webview,
             test_game_webview_js,
             set_ball_automation,
-            set_shop_automation
+            set_shop_automation,
+            set_solo_mode,
+            toggle_solo_panel,
+            aplicar_opcoes_solo
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

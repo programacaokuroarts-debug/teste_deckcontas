@@ -8,6 +8,9 @@ interface Account {
   useBeastBall: boolean;
   autoBall: boolean;
   forceUltraBall: boolean;
+  soloMode: boolean;
+  soloFocus: "xp" | "ouro" | "shiny";
+  soloShinyBestBall: boolean;
   shopAutomationEnabled: boolean;
   shopRules: Record<string, ShopRule>;
 }
@@ -124,6 +127,11 @@ let accounts: Account[] = JSON.parse(
   useBeastBall: account.useBeastBall ?? false,
   autoBall: account.autoBall ?? false,
   forceUltraBall: account.forceUltraBall ?? false,
+  soloMode: account.soloMode ?? false,
+  soloFocus: account.soloFocus === "ouro" || account.soloFocus === "shiny"
+    ? account.soloFocus
+    : "xp",
+  soloShinyBestBall: account.soloShinyBestBall ?? false,
   shopAutomationEnabled: account.shopAutomationEnabled ?? false,
   shopRules: normalizeShopRules(account.shopRules)
 }));
@@ -226,7 +234,8 @@ async function syncBallAutomation(account: Account) {
       accountId: account.id,
       enabled: account.autoBall,
       useBeastBall: account.useBeastBall,
-      forceUltraBall: account.forceUltraBall ?? false
+      forceUltraBall: account.forceUltraBall ?? false,
+      shinyBestBall: account.soloShinyBestBall ?? false
     });
 
     console.log(
@@ -234,7 +243,8 @@ async function syncBallAutomation(account: Account) {
       {
         enabled: account.autoBall,
         useBeastBall: account.useBeastBall,
-        forceUltraBall: account.forceUltraBall ?? false
+        forceUltraBall: account.forceUltraBall ?? false,
+        shinyBestBall: account.soloShinyBestBall ?? false
       }
     );
   } catch (error) {
@@ -244,6 +254,98 @@ async function syncBallAutomation(account: Account) {
     );
   }
 }
+
+/* =====================================================
+   SINCRONIZAR MODO SOLO
+===================================================== */
+
+async function syncSoloMode(account: Account) {
+  if (pausedAccounts.has(account.id)) {
+    return;
+  }
+
+  try {
+    await invoke("set_solo_mode", {
+      accountId: account.id,
+      enabled: account.soloMode ?? false,
+      ordem: account.soloFocus ?? "xp",
+      shinyBestBall: account.soloShinyBestBall ?? false
+    });
+
+    console.log(
+      `[Deck Contas] Modo Solo enviado para ${account.name}:`,
+      {
+        enabled: account.soloMode ?? false,
+        ordem: account.soloFocus ?? "xp",
+        shinyBestBall: account.soloShinyBestBall ?? false
+      }
+    );
+  } catch (error) {
+    console.error(
+      `[Deck Contas] Erro ao sincronizar Modo Solo da conta ${account.name}:`,
+      error
+    );
+  }
+}
+
+/* =====================================================
+   OPÇÕES VINDAS DO PAINEL DO JOGO
+
+   O popup do Modo Solo (dentro da webview da conta) altera o foco
+   e as opções de bola. O Rust repassa para cá pelo label da
+   webview; aqui a gente grava na conta e reenvia a config.
+===================================================== */
+
+(window as any).__deckContasAplicarOpcoesSolo = async (
+  id: number,
+  opts: {
+    ordem?: string | null;
+    forceUltraBall?: boolean | null;
+    shinyBestBall?: boolean | null;
+  }
+) => {
+  const account = accounts.find(item => item.id === id);
+  if (!account) return;
+
+  if (opts.ordem === "xp" || opts.ordem === "ouro" || opts.ordem === "shiny") {
+    account.soloFocus = opts.ordem;
+  }
+
+  if (typeof opts.forceUltraBall === "boolean") {
+    account.forceUltraBall = opts.forceUltraBall;
+  }
+
+  if (typeof opts.shinyBestBall === "boolean") {
+    account.soloShinyBestBall = opts.shinyBestBall;
+  }
+
+  save();
+
+  // Espelha a mudança nos controles do modal, se ele estiver aberto.
+  document
+    .querySelectorAll<HTMLInputElement>(`[data-force-ultra-ball="${id}"]`)
+    .forEach(el => { el.checked = account.forceUltraBall ?? false; });
+
+  document
+    .querySelectorAll<HTMLInputElement>(`[data-solo-shiny-ball="${id}"]`)
+    .forEach(el => { el.checked = account.soloShinyBestBall ?? false; });
+
+  document
+    .querySelectorAll<HTMLSelectElement>(`[data-solo-focus="${id}"]`)
+    .forEach(el => { el.value = account.soloFocus ?? "xp"; });
+
+  console.log(
+    `[Deck Contas] Opções do painel Solo aplicadas em ${account.name}:`,
+    {
+      soloFocus: account.soloFocus,
+      forceUltraBall: account.forceUltraBall ?? false,
+      soloShinyBestBall: account.soloShinyBestBall ?? false
+    }
+  );
+
+  await syncBallAutomation(account);
+  await syncSoloMode(account);
+};
 
 /* =====================================================
    SINCRONIZAR AUTOMAÇÃO DE COMPRAS
@@ -407,6 +509,7 @@ async function showAccountWebview(
 
     await syncBallAutomation(account);
     await syncShopAutomation(account);
+    await syncSoloMode(account);
 
     return;
   }
@@ -490,6 +593,7 @@ async function resumeAccount(id: number) {
     if (account) {
       await syncBallAutomation(account);
       await syncShopAutomation(account);
+      await syncSoloMode(account);
     }
   } catch (error) {
     console.error("Erro ao retomar conta:", error);
@@ -1386,11 +1490,89 @@ async function openSettings() {
 
                     </label>
 
+                    <label
+                      title="Modo Solo: calcula a melhor hunt para o pokemon em campo e leva para lá automaticamente"
+                    >
+
+                      <input
+                        type="checkbox"
+                        data-solo-mode="${account.id}"
+                        ${account.soloMode ? "checked" : ""}
+                        style="
+                          width: 16px;
+                          height: 16px;
+                          cursor: pointer;
+                          accent-color: #8b5cf6;
+                        "
+                      />
+
+                      Modo Solo
+
+                    </label>
+
+                    <label
+                      title="Foco do Modo Solo: o que a melhor hunt deve maximizar"
+                    >
+
+                      Solo:
+
+                      <select
+                        data-solo-focus="${account.id}"
+                        style="
+                          background: #141020;
+                          color: #e9e3f4;
+                          border: 1px solid rgba(255,255,255,.18);
+                          border-radius: 6px;
+                          padding: 5px 7px;
+                          font-size: 12px;
+                          cursor: pointer;
+                        "
+                      >
+                        <option value="xp" ${account.soloFocus === "xp" ? "selected" : ""}>
+                          XP/h
+                        </option>
+                        <option value="ouro" ${account.soloFocus === "ouro" ? "selected" : ""}>
+                          Ouro/h
+                        </option>
+                        <option value="shiny" ${account.soloFocus === "shiny" ? "selected" : ""}>
+                          Shiny
+                        </option>
+                      </select>
+
+                    </label>
+
+                    <label
+                      title="Usar as melhores bolas disponíveis assim que um Shiny morrer, para maximizar a captura"
+                    >
+
+                      <input
+                        type="checkbox"
+                        data-solo-shiny-ball="${account.id}"
+                        ${account.soloShinyBestBall ? "checked" : ""}
+                        style="
+                          width: 16px;
+                          height: 16px;
+                          cursor: pointer;
+                          accent-color: #8b5cf6;
+                        "
+                      />
+
+                      Melhores bolas em Shiny
+
+                    </label>
+
                     <button
                       data-shop-settings="${account.id}"
                       title="Configurar compras automáticas"
                     >
                       🛒 Compras
+                    </button>
+
+                    <button
+                      data-solo-panel="${account.id}"
+                      title="Abrir ou fechar o painel do Modo Solo dentro do jogo"
+                    >
+                      🎯 Solo
                     </button>
 
                     <button
@@ -1550,6 +1732,114 @@ async function openSettings() {
       );
 
       await syncBallAutomation(account);
+    });
+  });
+
+  modal.querySelectorAll<HTMLInputElement>(
+    "[data-solo-mode]"
+  ).forEach(checkbox => {
+    checkbox.addEventListener("change", async () => {
+      const id = Number(checkbox.dataset.soloMode);
+
+      const account = accounts.find(item => item.id === id);
+
+      if (!account) return;
+
+      account.soloMode = checkbox.checked;
+
+      save();
+
+      console.log(
+        `Conta ${account.name}: Modo Solo ${
+          checkbox.checked ? "ativado" : "desativado"
+        }.`
+      );
+
+      await syncSoloMode(account);
+    });
+  });
+
+  modal.querySelectorAll<HTMLSelectElement>(
+    "[data-solo-focus]"
+  ).forEach(select => {
+    select.addEventListener("change", async () => {
+      const id = Number(select.dataset.soloFocus);
+
+      const account = accounts.find(item => item.id === id);
+
+      if (!account) return;
+
+      const valor = select.value;
+
+      if (valor !== "xp" && valor !== "ouro" && valor !== "shiny") return;
+
+      account.soloFocus = valor;
+
+      save();
+
+      console.log(
+        `Conta ${account.name}: foco do Modo Solo alterado para ${valor}.`
+      );
+
+      await syncSoloMode(account);
+    });
+  });
+
+  modal.querySelectorAll<HTMLInputElement>(
+    "[data-solo-shiny-ball]"
+  ).forEach(checkbox => {
+    checkbox.addEventListener("change", async () => {
+      const id = Number(checkbox.dataset.soloShinyBall);
+
+      const account = accounts.find(item => item.id === id);
+
+      if (!account) return;
+
+      account.soloShinyBestBall = checkbox.checked;
+
+      save();
+
+      console.log(
+        `Conta ${account.name}: melhores bolas em Shiny ${
+          checkbox.checked ? "ativado" : "desativado"
+        }.`
+      );
+
+      await syncBallAutomation(account);
+      await syncSoloMode(account);
+    });
+  });
+
+  modal.querySelectorAll<HTMLButtonElement>(
+    "[data-solo-panel]"
+  ).forEach(button => {
+    button.addEventListener("click", async () => {
+      const id = Number(button.dataset.soloPanel);
+
+      const account = accounts.find(item => item.id === id);
+
+      if (!account) return;
+
+      try {
+        // Garante que o motor do Modo Solo está injetado antes de abrir.
+        await invoke("set_solo_mode", {
+          accountId: account.id,
+          enabled: account.soloMode ?? false,
+          ordem: account.soloFocus ?? "xp",
+          shinyBestBall: account.soloShinyBestBall ?? false
+        });
+
+        await invoke("toggle_solo_panel", {
+          accountId: account.id
+        });
+      } catch (error) {
+        console.error("Erro ao abrir o painel Solo:", error);
+
+        alert(
+          "Não foi possível abrir o painel Solo.\n\n" +
+          "Abra a janela do jogo desta conta primeiro."
+        );
+      }
     });
   });
 
@@ -1923,6 +2213,9 @@ function addAccount() {
     useBeastBall: false,
     autoBall: false,
     forceUltraBall: false,
+    soloMode: false,
+    soloFocus: "xp",
+    soloShinyBestBall: false,
     shopAutomationEnabled: false,
     shopRules: createDefaultShopRules()
   };
@@ -2019,6 +2312,37 @@ window.addEventListener("resize", () => {
     scheduleWebviewLayout();
   }, 150);
 });
+
+/* =====================================================
+   REENVIAR CONFIGURAÇÕES PERIODICAMENTE
+
+   A automação e o Modo Solo são injetados com eval na
+   janela do jogo: se a página for recarregada (F5), eles
+   somem. Reenviar de tempos em tempos restaura tudo sem
+   custo (os scripts são idempotentes).
+===================================================== */
+
+const RESYNC_INTERVAL_MS = 60 * 1000;
+
+function resyncAutomations() {
+  for (const account of accounts) {
+    if (pausedAccounts.has(account.id)) continue;
+    if (!createdWebviews.has(account.id)) continue;
+
+    // A automação de bola é reenviada também quando só as opções
+    // (Ultra fixa / bolas em Shiny) estão ativas: o painel do jogo
+    // lê o __deckContasBallConfig para mostrar os botões certos.
+    if (account.autoBall || account.forceUltraBall || account.soloShinyBestBall) {
+      syncBallAutomation(account);
+    }
+
+    if (account.soloMode) {
+      syncSoloMode(account);
+    }
+  }
+}
+
+window.setInterval(resyncAutomations, RESYNC_INTERVAL_MS);
 
 /* =====================================================
    INICIAR APLICAÇÃO

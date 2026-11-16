@@ -1,0 +1,14 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "game-views",
+  "description": "Ajustes enviados pelo painel Modo Solo que mora dentro da janela do jogo",
+  "webviews": ["game-view-*"],
+  "remote": {
+    "urls": [
+      "https://pokeidle.io/*",
+      "https://www.pokeidle.io/*",
+      "https://*.pokeidle.io/*"
+    ]
+  },
+  "permissions": ["allow-aplicar-opcoes-solo"]
+}

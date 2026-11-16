@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-is-game-webview-open"
+description = "Enables the is_game_webview_open command without any pre-configured scope."
+commands.allow = ["is_game_webview_open"]
+
+[[permission]]
+identifier = "deny-is-game-webview-open"
+description = "Denies the is_game_webview_open command without any pre-configured scope."
+commands.deny = ["is_game_webview_open"]
