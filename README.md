@@ -4,6 +4,8 @@ Aplicativo leve para Windows que gerencia **várias contas do PokeIdle ao mesmo 
 
 Feito em **Tauri 2** (Rust + WebView2) para consumir pouca memória e CPU: as contas ficam dentro da própria janela do app, sem abrir vários navegadores pesados.
 
+**Autor:** Luiz Henrique · **Co-participação:** Kuro
+
 ---
 
 ## ✨ Funcionalidades
@@ -54,6 +56,15 @@ O que ele faz:
   - Clique em uma **linha** para levar o Pokémon para aquela hunt manualmente.
   - Botões **Ultra fixa** e **Bolas em Shiny** direto no painel.
   - **Recalcular** e **Ir para a melhor** funcionam mesmo com o Modo Solo desligado (modo consulta).
+
+![Painel do Modo Solo com as 4 melhores hunts por XP/h, Ouro/h e Shiny](docs/img/modo-solo-painel.svg)
+
+*Exemplo do painel: três seções com o top 4 de cada foco, o foco atual destacado em azul e a hunt onde o Pokémon está marcada na lista.*
+
+![Controles do painel e avisos de viagem](docs/img/modo-solo-controles.svg)
+
+*Os mesmos botões ficam no topo do painel, e o rodapé explica quando a troca de hunt está liberada, em espera ou foi recusada pelo servidor.*
+
 
 ### 🪶 Leveza
 - Uma única janela com WebViews filhas, em vez de vários navegadores.
@@ -147,6 +158,13 @@ git tag                                   # lista os backups
 git checkout backup-1a59ad3-20261116      # volta para a versão antiga
 git checkout main                         # volta para a atual
 ```
+
+---
+
+## 👤 Autor
+
+- **Luiz Henrique** — autor do projeto
+- **Kuro** — co-participação
 
 ---
 
