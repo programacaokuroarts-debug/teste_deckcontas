@@ -724,6 +724,7 @@ const BALL_AUTOMATION_SCRIPT: &str = r##"
                 const pokemon = {
                     slot: Number(evento.slot),
                     nome: evento.nome || "",
+                    nivel: evento.level || 0, // Tentar pegar o nivel da mensagem
                     expiraEm: Date.now() + 30000
                 };
 
@@ -735,6 +736,7 @@ const BALL_AUTOMATION_SCRIPT: &str = r##"
                     {
                         slot: pokemon.slot,
                         nome: pokemon.nome,
+                        nivel: pokemon.nivel,
                         expiraEm: pokemon.expiraEm
                     }
                 );
@@ -803,38 +805,65 @@ const BALL_AUTOMATION_SCRIPT: &str = r##"
         return 0;
     }
 
-    function selecionarMelhorBola() {
+    function obterNivelDoPokemon(pokemon) {
+        if (pokemon && pokemon.nivel > 0) return pokemon.nivel;
+        if (!pokemon) return 0;
+        
+        const el = document.querySelector(`#caidos-lista .caido[data-slot="${pokemon.slot}"]`);
+        if (!el) return 0;
+        
+        const txt = el.innerText || el.textContent || "";
+        const m = txt.match(/L[vV]?\.?\s*(\d+)/) || txt.match(/(\d+)/);
+        return m ? parseInt(m[1], 10) : 0;
+    }
+
+    function selecionarMelhorBola(pokemon) {
         const config = window.__deckContasBallConfig;
 
         const botoes = Array.from(
             document.querySelectorAll("#caidos-bolas .caidos-bola")
         );
 
-        const prioridade = config?.useBeastBall
-            ? [5, 4, 3, 2, 1]
-            : [4, 3, 2, 1];
+        if (botoes.length === 0) return null;
 
-        for (const id of prioridade) {
-            const botao = botoes.find(
-                elemento => identificarBola(elemento) === id
-            );
-
-            // Apenas retornar a bola se não estiver em uso (classe "on" significa selecionada)
-            if (botao && !botao.classList.contains("on")) {
-                return { id, botao };
+        // Se estiver configurado para FORÇAR ULTRA BALL
+        if (config?.forceUltraBall) {
+            const prioridadeUltra = config?.useBeastBall ? [5, 4] : [4];
+            for (const id of prioridadeUltra) {
+                const btn = botoes.find(e => identificarBola(e) === id);
+                if (btn) return { id, botao: btn };
             }
+            // Fallback para qualquer outra se nao tiver Ultra
+            for (const id of [3, 2, 1]) {
+                const btn = botoes.find(e => identificarBola(e) === id);
+                if (btn) return { id, botao: btn };
+            }
+            return null;
         }
 
-        // Se todos estão sendo usados, retornar null
-        // Mas verificar se algum botão pode ser clicado novamente
-        for (const id of prioridade) {
-            const botao = botoes.find(
-                elemento => identificarBola(elemento) === id
-            );
+        // Lógica Inteligente de Nível
+        const nivel = obterNivelDoPokemon(pokemon);
+        let prioridade = [];
 
-            if (botao) {
-                return { id, botao };
-            }
+        if (nivel >= 50) {
+            // Level 50 ou mais: Usar Beast Ball (se ativa) ou Ultra Ball (4), caindo para Super (3)
+            prioridade = config?.useBeastBall ? [5, 4, 3] : [4, 3];
+        } else {
+            // Level abaixo de 50: Usar bolas de baixo nível Great (2) ou Poke Ball (1)
+            prioridade = [2, 1];
+        }
+
+        // Tenta achar a bola ideal da prioridade
+        for (const id of prioridade) {
+            const btn = botoes.find(e => identificarBola(e) === id);
+            if (btn) return { id, botao: btn };
+        }
+
+        // Se nao tem a bola ideal do nivel, usa qualquer outra disponivel
+        const prioridadeGeral = config?.useBeastBall ? [5, 4, 3, 2, 1] : [4, 3, 2, 1];
+        for (const id of prioridadeGeral) {
+            const btn = botoes.find(e => identificarBola(e) === id);
+            if (btn) return { id, botao: btn };
         }
 
         return null;
@@ -942,7 +971,7 @@ const BALL_AUTOMATION_SCRIPT: &str = r##"
         window.__deckContasBallBusy = true;
 
         try {
-            const bola = selecionarMelhorBola();
+            const bola = selecionarMelhorBola(pokemonUrgente);
             if (!bola) {
                 // Se não temos bola disponível agora, marcar que tentamos recentemente
                 // para não ficarmos tentando o mesmo pokemon eternamente
@@ -950,12 +979,9 @@ const BALL_AUTOMATION_SCRIPT: &str = r##"
                 return;
             }
 
-            // Seleciona a bola pelo mecanismo real do jogo.
-            // O lançamento continua sendo enviado pelo WebSocket.
-            if (!bola.botao.classList.contains("on")) {
-                bola.botao.click();
-            }
-
+            // O lançamento é enviado SOMENTE pelo WebSocket, com o id da bola
+            // escolhido. Não clicamos no botão da bola para evitar que o jogo
+            // lance uma segunda bola (bug de lançar dois tipos de Pokébola).
             tentativas.set(slot, agora);
 
             const enviado = lancarBola(pokemonUrgente, bola);
@@ -1045,17 +1071,14 @@ const BALL_AUTOMATION_SCRIPT: &str = r##"
         }
         
         const s = String(pokemonUrgente.slot);
-        const bola = selecionarMelhorBola();
+        const bola = selecionarMelhorBola(pokemonUrgente);
         
         if (!bola) {
             window.__deckContasLog?.("ERRO", { motivo: "Nenhuma bola disponivel" });
             return false;
         }
         
-        if (!bola.botao.classList.contains("on")) {
-            bola.botao.click();
-        }
-        
+        // Sem clique no botão: o envio é feito só pelo WebSocket (evita 2 bolas)
         tentativas.set(pokemonUrgente.slot, agora);
         const enviado = lancarBola(pokemonUrgente, bola);
         
@@ -1088,6 +1111,7 @@ fn set_ball_automation(
     account_id: u64,
     enabled: bool,
     use_beast_ball: bool,
+    force_ultra_ball: bool,
 ) -> Result<(), String> {
     let label = format!("game-view-{}", account_id);
 
@@ -1097,7 +1121,8 @@ fn set_ball_automation(
 
     let config = serde_json::json!({
         "enabled": enabled,
-        "useBeastBall": use_beast_ball
+        "useBeastBall": use_beast_ball,
+        "forceUltraBall": force_ultra_ball
     });
 
     let script = format!(

@@ -7,6 +7,7 @@ interface Account {
   url: string;
   useBeastBall: boolean;
   autoBall: boolean;
+  forceUltraBall: boolean;
   shopAutomationEnabled: boolean;
   shopRules: Record<string, ShopRule>;
 }
@@ -122,6 +123,7 @@ let accounts: Account[] = JSON.parse(
   url: account.url ?? "",
   useBeastBall: account.useBeastBall ?? false,
   autoBall: account.autoBall ?? false,
+  forceUltraBall: account.forceUltraBall ?? false,
   shopAutomationEnabled: account.shopAutomationEnabled ?? false,
   shopRules: normalizeShopRules(account.shopRules)
 }));
@@ -223,14 +225,16 @@ async function syncBallAutomation(account: Account) {
     await invoke("set_ball_automation", {
       accountId: account.id,
       enabled: account.autoBall,
-      useBeastBall: account.useBeastBall
+      useBeastBall: account.useBeastBall,
+      forceUltraBall: account.forceUltraBall ?? false
     });
 
     console.log(
       `[Deck Contas] Configuração enviada para ${account.name}:`,
       {
         enabled: account.autoBall,
-        useBeastBall: account.useBeastBall
+        useBeastBall: account.useBeastBall,
+        forceUltraBall: account.forceUltraBall ?? false
       }
     );
   } catch (error) {
@@ -1356,6 +1360,32 @@ async function openSettings() {
 
                     </label>
 
+                    <label style="
+                      display: inline-flex;
+                      align-items: center;
+                      gap: 6px;
+                      color: #ffffff;
+                      font-size: 13px;
+                      cursor: pointer;
+                      margin-right: 8px;
+                    ">
+
+                      <input
+                        type="checkbox"
+                        data-force-ultra-ball="${account.id}"
+                        ${account.forceUltraBall ? "checked" : ""}
+                        style="
+                          width: 16px;
+                          height: 16px;
+                          cursor: pointer;
+                          accent-color: #8b5cf6;
+                        "
+                      />
+
+                      Forçar Ultra Ball
+
+                    </label>
+
                     <button
                       data-shop-settings="${account.id}"
                       title="Configurar compras automáticas"
@@ -1491,6 +1521,30 @@ async function openSettings() {
 
       console.log(
         `Conta ${account.name}: uso da Beast Ball ${
+          checkbox.checked ? "ativado" : "desativado"
+        }.`
+      );
+
+      await syncBallAutomation(account);
+    });
+  });
+
+  modal.querySelectorAll<HTMLInputElement>(
+    "[data-force-ultra-ball]"
+  ).forEach(checkbox => {
+    checkbox.addEventListener("change", async () => {
+      const id = Number(checkbox.dataset.forceUltraBall);
+
+      const account = accounts.find(item => item.id === id);
+
+      if (!account) return;
+
+      account.forceUltraBall = checkbox.checked;
+
+      save();
+
+      console.log(
+        `Conta ${account.name}: forçar Ultra Ball ${
           checkbox.checked ? "ativado" : "desativado"
         }.`
       );
@@ -1868,6 +1922,7 @@ function addAccount() {
     url,
     useBeastBall: false,
     autoBall: false,
+    forceUltraBall: false,
     shopAutomationEnabled: false,
     shopRules: createDefaultShopRules()
   };
